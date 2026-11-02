@@ -9,15 +9,12 @@ from matplotlib.path import Path
 # ЧАСТИНА 1: ГЕОМЕТРІЯ ТА ТРИАНГУЛЯЦІЯ
 # ==========================================
 
-# Рахуємо найменший кут, площу і центр описаного кола
 def get_triangle_data(pts):
     A, B, C = pts[0], pts[1], pts[2]
     a, b, c = np.linalg.norm(B - C), np.linalg.norm(A - C), np.linalg.norm(A - B)
     
-    # Площа за координатами
     area = 0.5 * abs(A[0]*(B[1] - C[1]) + B[0]*(C[1] - A[1]) + C[0]*(A[1] - B[1]))
     
-    # Теорема косинусів
     cos_vals = [
         np.clip((b**2 + c**2 - a**2) / (2 * b * c), -1.0, 1.0),
         np.clip((a**2 + c**2 - b**2) / (2 * a * c), -1.0, 1.0),
@@ -25,7 +22,6 @@ def get_triangle_data(pts):
     ]
     min_deg = float(np.min(np.degrees(np.arccos(cos_vals))))
 
-    # Точка Штайнера
     D = 2 * (A[0] * (B[1] - C[1]) + B[0] * (C[1] - A[1]) + C[0] * (A[1] - B[1]))
     if abs(D) < 1e-9:
         return min_deg, area, np.mean(pts, axis=0)
@@ -58,7 +54,6 @@ def generate_mesh(poly, edge_types, target_angle, max_area, max_iter=150):
             pts.append(p1 + (p2 - p1) * (j / n_segs))
     pts = np.array(pts)
 
-    # Адаптивне подрібнення (Рупперт + контроль площі)
     for _ in range(max_iter):
         tri = Delaunay(pts)
         simplices = tri.simplices[path.contains_points(np.mean(pts[tri.simplices], axis=1), radius=-1e-5)]
@@ -66,9 +61,7 @@ def generate_mesh(poly, edge_types, target_angle, max_area, max_iter=150):
         bad_elems = []
         for s in simplices:
             deg, area, cc = get_triangle_data(pts[s])
-            # Елемент "поганий", якщо кут занадто малий АБО площа занадто велика
             if deg < target_angle or area > max_area:
-                # Пріоритет помилки: чим менший кут або чим більша площа, тим більший пріоритет
                 error = max(0, target_angle - deg) + max(0, (area - max_area) / max_area * 10)
                 bad_elems.append((error, cc, np.mean(pts[s], axis=0)))
                 
@@ -211,7 +204,6 @@ presets = {
 }
 poly_default, b_types = presets[preset]
 
-# Введення координат вручну
 verts = np.array([[float(x) for x in st.sidebar.text_input(f"V{i+1}:", f"{p[0]}, {p[1]}").replace(',', ' ').split()[:2]] 
                   for i, p in enumerate(poly_default)])
 
@@ -230,19 +222,15 @@ sigma = st.sidebar.number_input("sigma", value=1.0)
 beta = st.sidebar.number_input("beta", value=1.0)
 psi = st.sidebar.number_input("psi", value=1.0)
 
-# ГЕНЕРАЦІЯ СІТКИ (тепер із max_area)
 nodes, elements, boundaries = generate_mesh(verts, b_types, target_angle, max_area)
 boundary_edges = get_boundary_edges(elements, nodes, verts, b_types)
 
-# ФОРМУВАННЯ МАТРИЦЬ МСЕ
 A, B, local_mats, bnd_mats = build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigma, beta, psi)
 
-# Для виведення таблиці кутів
 angles = [get_triangle_data(nodes[s])[0] for s in elements]
 min_deg_found = min(angles) if len(angles) > 0 else 0.0
 
-# ВІЗУАЛІЗАЦІЯ
-tab1, tab2, tab3 = st.tabs(["Триангуляція", "Локальні Матриці (Елемент 0)", "Глобальна СЛАР"])
+tab1, tab2, tab3 = st.tabs(["Триангуляція", "Локальні Матриці Елементів", "Глобальна СЛАР"])
 
 with tab1:
     col1, col2 = st.columns([1.1, 0.9])
@@ -278,29 +266,35 @@ with tab1:
         st.dataframe(pd.DataFrame(nodes, columns=['X', 'Y']).assign(Маркер=boundaries, Умова=[b_map.get(b, str(b)) for b in boundaries]), height=200, use_container_width=True)
 
 with tab2:
-    st.subheader("Локальні матриці для Елемента №0")
-    if 0 in local_mats:
-        e0_mats = local_mats[0]
+    st.subheader("Локальні матриці по кожному скінченному елементу")
+    
+    # Вибір елемента через Dropdown
+    selected_e = st.selectbox("Оберіть номер скінченного елемента для перегляду:", list(local_mats.keys()))
+    
+    if selected_e in local_mats:
+        e_mats = local_mats[selected_e]
         c1, c2, c3 = st.columns(3)
-        c1.write("**Матриця жорсткості $K_0$**")
-        c1.dataframe(pd.DataFrame(e0_mats['K']))
+        c1.write(f"**Матриця жорсткості $K_{{{selected_e}}}$**")
+        c1.dataframe(pd.DataFrame(e_mats['K']))
         
-        c2.write("**Матриця мас $M_0$**")
-        c2.dataframe(pd.DataFrame(e0_mats['M']))
+        c2.write(f"**Матриця мас $M_{{{selected_e}}}$**")
+        c2.dataframe(pd.DataFrame(e_mats['M']))
         
-        c3.write("**Вектор навантаження $Q_0$**")
-        c3.dataframe(pd.DataFrame(e0_mats['Q'], columns=["Значення"]))
+        c3.write(f"**Вектор навантаження $Q_{{{selected_e}}}$**")
+        c3.dataframe(pd.DataFrame(e_mats['Q'], columns=["Значення"]))
     
     st.divider()
-    st.subheader("Граничні матриці (для першого ребра 3-го типу)")
-    r3_edges = [m for m in bnd_mats.values() if m['type'] == 3]
+    st.subheader("Граничні матриці для ребер 3-го типу (Робіна)")
+    r3_edges = {k: v for k, v in bnd_mats.items() if v.get('type') == 3}
+    
     if r3_edges:
-        e_bnd = r3_edges[0]
-        st.write(f"Ребро між вузлами: **{e_bnd['nodes']}**")
+        selected_bnd = st.selectbox("Оберіть номер граничного ребра:", list(r3_edges.keys()))
+        e_bnd = r3_edges[selected_bnd]
+        st.write(f"Ребро між глобальними вузлами: **{e_bnd['nodes']}**")
         c1, c2 = st.columns(2)
-        c1.write("**Гранична матриця $R_e$**")
+        c1.write(f"**Гранична матриця $R_{{{selected_bnd}}}$**")
         c1.dataframe(pd.DataFrame(e_bnd['R']))
-        c2.write("**Граничний вектор $P_e$**")
+        c2.write(f"**Граничний вектор $P_{{{selected_bnd}}}$**")
         c2.dataframe(pd.DataFrame(e_bnd['P'], columns=["Значення"]))
     else:
         st.info("У даній конфігурації сітки немає ребер 3-го типу на межі.")
@@ -308,7 +302,6 @@ with tab2:
 with tab3:
     st.subheader(f"Глобальна матриця СЛАР (Розмір: {A.shape[0]}x{A.shape[1]})")
     st.write("Повна матриця $A$:")
-    # use_container_width дозволяє розгорнути таблицю, а Streamlit сам створює скрол для повних даних
     st.dataframe(pd.DataFrame(A), use_container_width=True)
     
     st.write("Повний вектор $B$:")

@@ -222,7 +222,7 @@ psi = st.sidebar.number_input("psi", value=1.0)
 
 # ГЕНЕРАЦІЯ СІТКИ
 nodes, elements, boundaries = generate_mesh(verts, b_types, target_angle)
-boundary_edges = get_boundary_edges(elements, nodes, poly_default, b_types)
+boundary_edges = get_boundary_edges(elements, nodes, verts, b_types)
 
 # ФОРМУВАННЯ МАТРИЦЬ МСЕ
 A, B, local_mats, bnd_mats = build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigma, beta, psi)

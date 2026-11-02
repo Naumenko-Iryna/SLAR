@@ -267,35 +267,33 @@ with tab1:
 
 with tab2:
     st.subheader("Локальні матриці по кожному скінченному елементу")
+    st.info("Матриця $K_e$ змінюється від кутів нахилу елемента. Матриця $M_e$ та вектор $Q_e$ залежать від площі (і коефіцієнта $d$).")
     
-    # Вибір елемента через Dropdown
-    selected_e = st.selectbox("Оберіть номер скінченного елемента для перегляду:", list(local_mats.keys()))
-    
-    if selected_e in local_mats:
-        e_mats = local_mats[selected_e]
-        c1, c2, c3 = st.columns(3)
-        c1.write(f"**Матриця жорсткості $K_{{{selected_e}}}$**")
-        c1.dataframe(pd.DataFrame(e_mats['K']))
-        
-        c2.write(f"**Матриця мас $M_{{{selected_e}}}$**")
-        c2.dataframe(pd.DataFrame(e_mats['M']))
-        
-        c3.write(f"**Вектор навантаження $Q_{{{selected_e}}}$**")
-        c3.dataframe(pd.DataFrame(e_mats['Q'], columns=["Значення"]))
+    for e_idx, e_mats in local_mats.items():
+        with st.expander(f"Елемент №{e_idx}", expanded=False):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"**$K_{{{e_idx}}}$**")
+            c1.dataframe(pd.DataFrame(e_mats['K']))
+            
+            c2.write(f"**$M_{{{e_idx}}}$**")
+            c2.dataframe(pd.DataFrame(e_mats['M']))
+            
+            c3.write(f"**$Q_{{{e_idx}}}$**")
+            c3.dataframe(pd.DataFrame(e_mats['Q'], columns=["Значення"]))
     
     st.divider()
     st.subheader("Граничні матриці для ребер 3-го типу (Робіна)")
     r3_edges = {k: v for k, v in bnd_mats.items() if v.get('type') == 3}
     
     if r3_edges:
-        selected_bnd = st.selectbox("Оберіть номер граничного ребра:", list(r3_edges.keys()))
-        e_bnd = r3_edges[selected_bnd]
-        st.write(f"Ребро між глобальними вузлами: **{e_bnd['nodes']}**")
-        c1, c2 = st.columns(2)
-        c1.write(f"**Гранична матриця $R_{{{selected_bnd}}}$**")
-        c1.dataframe(pd.DataFrame(e_bnd['R']))
-        c2.write(f"**Граничний вектор $P_{{{selected_bnd}}}$**")
-        c2.dataframe(pd.DataFrame(e_bnd['P'], columns=["Значення"]))
+        st.info("Значення $R_e$ та $P_e$ залежать від довжини відрізка на межі.")
+        for b_idx, e_bnd in r3_edges.items():
+            with st.expander(f"Граничне ребро №{b_idx} (Між вузлами {e_bnd['nodes']})", expanded=False):
+                c1, c2 = st.columns(2)
+                c1.write(f"**$R_{{{b_idx}}}$**")
+                c1.dataframe(pd.DataFrame(e_bnd['R']))
+                c2.write(f"**$P_{{{b_idx}}}$**")
+                c2.dataframe(pd.DataFrame(e_bnd['P'], columns=["Значення"]))
     else:
         st.info("У даній конфігурації сітки немає ребер 3-го типу на межі.")
 

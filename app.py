@@ -5,10 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay
 from matplotlib.path import Path
 
-# ==========================================
-# ЧАСТИНА 1: ГЕОМЕТРІЯ ТА ТРИАНГУЛЯЦІЯ
-# ==========================================
-
 def get_triangle_data(pts):
     A, B, C = pts[0], pts[1], pts[2]
     a, b, c = np.linalg.norm(B - C), np.linalg.norm(A - C), np.linalg.norm(A - B)
@@ -118,11 +114,10 @@ def get_boundary_edges(elements, nodes, verts, edge_types):
             bnd_edges.append({'nodes': [n1, n2], 'type': edge_type})
     return bnd_edges
 
-# ==========================================
-# ЧАСТИНА 2: ПОБУДОВА МАТРИЦЬ МСЕ ТА СЛАР
-# ==========================================
+# ПОБУДОВА МАТРИЦЬ МСЕ ТА СЛАР
+
 def build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigma, beta, psi):
-    N_nodes = len(nodes)
+    N_nodes = len(nodes) # Обчислює загальну кількість усіх вузлів сітки
     A = np.zeros((N_nodes, N_nodes))
     B = np.zeros(N_nodes)
     
@@ -186,9 +181,6 @@ def build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigm
         
     return A, B, local_mats, bnd_mats
 
-# ==========================================
-# ІНТЕРФЕЙС STREAMLIT
-# ==========================================
 st.set_page_config(page_title="МСЕ: Триангуляція та СЛАР", layout="wide")
 st.title("Метод Скінченних Елементів (Варіант 12)")
 
@@ -272,7 +264,7 @@ with tab2:
     for e_idx, e_mats in local_mats.items():
         with st.expander(f"Елемент №{e_idx}", expanded=False):
             c1, c2, c3 = st.columns(3)
-            c1.write(f"**$K_{{{e_idx}}}$**")
+            c1.write(f" Матриця жорсткості **$K_{{{e_idx}}}$**")
             c1.dataframe(pd.DataFrame(e_mats['K']))
             
             c2.write(f"**$M_{{{e_idx}}}$**")

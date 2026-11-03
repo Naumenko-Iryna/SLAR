@@ -122,16 +122,19 @@ def build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigm
     B = np.zeros(N_nodes)
     
     local_mats = {}
-    
-    for e_idx, elem in enumerate(elements):
-        p = nodes[elem]
+
+    # Матриця жорсткості Ke
+    for e_idx, elem in enumerate(elements): # перебираємо кожен трикутник сітки
+        p = nodes[elem] # координати трьох вершин конкретного трикутника
         x_i, y_i = p[0]
         x_j, y_j = p[1]
         x_m, y_m = p[2]
-        
+
+        # Геометричні коефіцієнти форми
         b = np.array([y_j - y_m, y_m - y_i, y_i - y_j])
         c = np.array([x_m - x_j, x_i - x_m, x_j - x_i])
-        
+
+        # Подвоєна площа трикутника, формула є розкриттям визначника матриці
         delta = abs(x_i*(y_j - y_m) + x_j*(y_m - y_i) + x_m*(y_i - y_j))
         
         K_e = np.zeros((3, 3))

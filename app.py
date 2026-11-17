@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay
 from matplotlib.path import Path
 
+# ==========================================
+# ЧАСТИНА 1: ГЕОМЕТРІЯ ТА ТРИАНГУЛЯЦІЯ
+# ==========================================
+
 def get_triangle_data(pts):
     A, B, C = pts[0], pts[1], pts[2]
     a, b, c = np.linalg.norm(B - C), np.linalg.norm(A - C), np.linalg.norm(A - B)
@@ -90,51 +94,25 @@ def generate_mesh(poly, edge_types, target_angle, max_area, max_iter=150):
         
     return pts, simplices, boundaries
 
-def get_boundary_edges(elements, nodes, verts, edge_types):
-    edges = {}
-    for elem in elements:
-        for i in range(3):
-            n1, n2 = elem[i], elem[(i+1)%3]
-            edge = tuple(sorted((n1, n2)))
-            edges[edge] = edges.get(edge, 0) + 1
+# ==========================================
+# ЧАСТИНА 2: ПОБУДОВА МАТРИЦЬ МСЕ ТА СЛАР
+# ==========================================
 
-    bnd_edges = []
-    n_v = len(verts)
-    for edge, count in edges.items():
-        if count == 1: 
-            n1, n2 = edge
-            midpoint = (nodes[n1] + nodes[n2]) / 2.0
-            edge_type = 0
-            for i in range(n_v):
-                p1, p2 = verts[i], verts[(i+1)%n_v]
-                d1, d2, d3 = np.linalg.norm(midpoint - p1), np.linalg.norm(p2 - midpoint), np.linalg.norm(p2 - p1)
-                if abs(d1 + d2 - d3) < 1e-4:
-                    edge_type = edge_types[i]
-                    break
-            bnd_edges.append({'nodes': [n1, n2], 'type': edge_type})
-    return bnd_edges
-
-# ПОБУДОВА МАТРИЦЬ МСЕ ТА СЛАР
-
-def build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigma, beta, psi):
-    N_nodes = len(nodes) # Обчислює загальну кількість усіх вузлів сітки
+def build_fem_matrices(nodes, elements, a11, a22, d_c, f_c):
+    N_nodes = len(nodes)
     A = np.zeros((N_nodes, N_nodes))
     B = np.zeros(N_nodes)
-    
     local_mats = {}
-
-    # Матриця жорсткості Ke
-    for e_idx, elem in enumerate(elements): # перебираємо кожен трикутник сітки
-        p = nodes[elem] # координати трьох вершин конкретного трикутника
+    
+    # Розрахунок тільки по внутрішніх трикутниках (без урахування граничних умов)
+    for e_idx, elem in enumerate(elements):
+        p = nodes[elem]
         x_i, y_i = p[0]
         x_j, y_j = p[1]
         x_m, y_m = p[2]
-
-        # Геометричні коефіцієнти форми
+        
         b = np.array([y_j - y_m, y_m - y_i, y_i - y_j])
         c = np.array([x_m - x_j, x_i - x_m, x_j - x_i])
-
-        # Подвоєна площа трикутника, формула є розкриттям визначника матриці
         delta = abs(x_i*(y_j - y_m) + x_j*(y_m - y_i) + x_m*(y_i - y_j))
         
         K_e = np.zeros((3, 3))
@@ -147,42 +125,17 @@ def build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigm
         
         local_mats[e_idx] = {'K': K_e, 'M': M_e, 'Q': Q_e}
         
+        # Ансамблювання в глобальну СЛАР
         for i in range(3):
             B[elem[i]] += Q_e[i]
             for j in range(3):
                 A[elem[i], elem[j]] += K_e[i, j] + M_e[i, j]
+                
+    return A, B, local_mats
 
-    bnd_mats = {}
-    for b_idx, bedge in enumerate(boundary_edges):
-        n1, n2 = bedge['nodes']
-        btype = bedge['type']
-        gamma = np.linalg.norm(nodes[n1] - nodes[n2])
-        
-        if btype == 3:
-            R_e = (sigma / beta) * (gamma / 6.0) * np.array([[2, 1], [1, 2]])
-            P_e = (psi / beta) * (gamma / 2.0) * np.array([1, 1])
-            bnd_mats[b_idx] = {'R': R_e, 'P': P_e, 'nodes': [n1, n2], 'type': btype}
-            
-            A[n1, n1] += R_e[0, 0]
-            A[n1, n2] += R_e[0, 1]
-            A[n2, n1] += R_e[1, 0]
-            A[n2, n2] += R_e[1, 1]
-            B[n1] += P_e[0]
-            B[n2] += P_e[1]
-        else:
-            bnd_mats[b_idx] = {'type': btype, 'nodes': [n1, n2]}
-
-    dirichlet_nodes = set()
-    for bedge in boundary_edges:
-        if bedge['type'] == 1:
-            dirichlet_nodes.update(bedge['nodes'])
-            
-    for n in dirichlet_nodes:
-        A[n, :] = 0
-        A[n, n] = 1.0
-        B[n] = 0.0
-        
-    return A, B, local_mats, bnd_mats
+# ==========================================
+# ІНТЕРФЕЙС STREAMLIT
+# ==========================================
 
 st.set_page_config(page_title="МСЕ: Триангуляція та СЛАР", layout="wide")
 st.title("Метод Скінченних Елементів (Варіант 12)")
@@ -211,20 +164,14 @@ a22 = st.sidebar.number_input("a22", value=2.0)
 d_c = st.sidebar.number_input("d (коеф. реакції)", value=0.0)
 f_c = st.sidebar.number_input("f (джерело)", value=1.0)
 
-st.sidebar.header("Крайова умова 3-го типу")
-st.sidebar.markdown(r"$\beta \frac{\partial u}{\partial n} + \sigma u = \psi$")
-sigma = st.sidebar.number_input("sigma", value=1.0)
-beta = st.sidebar.number_input("beta", value=1.0)
-psi = st.sidebar.number_input("psi", value=1.0)
-
+# ГЕНЕРАЦІЯ СІТКИ ТА РОЗРАХУНОК МАТРИЦЬ
 nodes, elements, boundaries = generate_mesh(verts, b_types, target_angle, max_area)
-boundary_edges = get_boundary_edges(elements, nodes, verts, b_types)
-
-A, B, local_mats, bnd_mats = build_fem_matrices(nodes, elements, boundary_edges, a11, a22, d_c, f_c, sigma, beta, psi)
+A, B, local_mats = build_fem_matrices(nodes, elements, a11, a22, d_c, f_c)
 
 angles = [get_triangle_data(nodes[s])[0] for s in elements]
 min_deg_found = min(angles) if len(angles) > 0 else 0.0
 
+# ВІЗУАЛІЗАЦІЯ
 tab1, tab2, tab3 = st.tabs(["Триангуляція", "Локальні Матриці Елементів", "Глобальна СЛАР"])
 
 with tab1:
@@ -267,35 +214,19 @@ with tab2:
     for e_idx, e_mats in local_mats.items():
         with st.expander(f"Елемент №{e_idx}", expanded=False):
             c1, c2, c3 = st.columns(3)
-            c1.write(f" Матриця жорсткості **$K_{{{e_idx}}}$**")
+            c1.write(f"Матриця жорсткості **$K_{{{e_idx}}}$**")
             c1.dataframe(pd.DataFrame(e_mats['K']))
             
-            c2.write(f"**$M_{{{e_idx}}}$**")
+            c2.write(f"Матриця мас **$M_{{{e_idx}}}$**")
             c2.dataframe(pd.DataFrame(e_mats['M']))
             
-            c3.write(f"**$Q_{{{e_idx}}}$**")
+            c3.write(f"Вектор навантаження **$Q_{{{e_idx}}}$**")
             c3.dataframe(pd.DataFrame(e_mats['Q'], columns=["Значення"]))
-    
-    st.divider()
-    st.subheader("Граничні матриці для ребер 3-го типу (Робіна)")
-    r3_edges = {k: v for k, v in bnd_mats.items() if v.get('type') == 3}
-    
-    if r3_edges:
-        st.info("Значення $R_e$ та $P_e$ залежать від довжини відрізка на межі.")
-        for b_idx, e_bnd in r3_edges.items():
-            with st.expander(f"Граничне ребро №{b_idx} (Між вузлами {e_bnd['nodes']})", expanded=False):
-                c1, c2 = st.columns(2)
-                c1.write(f"**$R_{{{b_idx}}}$**")
-                c1.dataframe(pd.DataFrame(e_bnd['R']))
-                c2.write(f"**$P_{{{b_idx}}}$**")
-                c2.dataframe(pd.DataFrame(e_bnd['P'], columns=["Значення"]))
-    else:
-        st.info("У даній конфігурації сітки немає ребер 3-го типу на межі.")
 
 with tab3:
     st.subheader(f"Глобальна матриця СЛАР (Розмір: {A.shape[0]}x{A.shape[1]})")
-    st.write("Повна матриця $A$:")
+    st.write("Базова симетрична матриця $A$ (без накладених крайових умов):")
     st.dataframe(pd.DataFrame(A), use_container_width=True)
     
-    st.write("Повний вектор $B$:")
+    st.write("Вектор правої частини $B$:")
     st.dataframe(pd.DataFrame(B, columns=["B"]), use_container_width=True)

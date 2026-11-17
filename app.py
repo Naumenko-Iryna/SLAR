@@ -5,10 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay
 from matplotlib.path import Path
 
-# ==========================================
-# ЧАСТИНА 1: ГЕОМЕТРІЯ ТА ТРИАНГУЛЯЦІЯ
-# ==========================================
-
 def get_triangle_data(pts):
     A, B, C = pts[0], pts[1], pts[2]
     a, b, c = np.linalg.norm(B - C), np.linalg.norm(A - C), np.linalg.norm(A - B)
@@ -94,17 +90,12 @@ def generate_mesh(poly, edge_types, target_angle, max_area, max_iter=150):
         
     return pts, simplices, boundaries
 
-# ==========================================
-# ЧАСТИНА 2: ПОБУДОВА МАТРИЦЬ МСЕ ТА СЛАР
-# ==========================================
-
 def build_fem_matrices(nodes, elements, a11, a22, d_c, f_c):
     N_nodes = len(nodes)
     A = np.zeros((N_nodes, N_nodes))
     B = np.zeros(N_nodes)
     local_mats = {}
     
-    # Розрахунок тільки по внутрішніх трикутниках (без урахування граничних умов)
     for e_idx, elem in enumerate(elements):
         p = nodes[elem]
         x_i, y_i = p[0]
@@ -133,10 +124,6 @@ def build_fem_matrices(nodes, elements, a11, a22, d_c, f_c):
                 
     return A, B, local_mats
 
-# ==========================================
-# ІНТЕРФЕЙС STREAMLIT
-# ==========================================
-
 st.set_page_config(page_title="МСЕ: Триангуляція та СЛАР", layout="wide")
 st.title("Метод Скінченних Елементів (Варіант 12)")
 
@@ -164,14 +151,12 @@ a22 = st.sidebar.number_input("a22", value=2.0)
 d_c = st.sidebar.number_input("d (коеф. реакції)", value=0.0)
 f_c = st.sidebar.number_input("f (джерело)", value=1.0)
 
-# ГЕНЕРАЦІЯ СІТКИ ТА РОЗРАХУНОК МАТРИЦЬ
 nodes, elements, boundaries = generate_mesh(verts, b_types, target_angle, max_area)
 A, B, local_mats = build_fem_matrices(nodes, elements, a11, a22, d_c, f_c)
 
 angles = [get_triangle_data(nodes[s])[0] for s in elements]
 min_deg_found = min(angles) if len(angles) > 0 else 0.0
 
-# ВІЗУАЛІЗАЦІЯ
 tab1, tab2, tab3 = st.tabs(["Триангуляція", "Локальні Матриці Елементів", "Глобальна СЛАР"])
 
 with tab1:
